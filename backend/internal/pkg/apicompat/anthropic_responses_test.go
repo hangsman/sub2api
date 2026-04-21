@@ -181,6 +181,36 @@ func TestResponsesToAnthropic_TextOnly(t *testing.T) {
 	assert.Equal(t, 5, anth.Usage.OutputTokens)
 }
 
+func TestResponsesToAnthropic_CachedTokensExcludedFromInputTokens(t *testing.T) {
+	resp := &ResponsesResponse{
+		ID:     "resp_cache_input",
+		Model:  "gpt-5.2",
+		Status: "completed",
+		Output: []ResponsesOutput{
+			{
+				Type: "message",
+				Content: []ResponsesContentPart{
+					{Type: "output_text", Text: "cached"},
+				},
+			},
+		},
+		Usage: &ResponsesUsage{
+			InputTokens:  54006,
+			OutputTokens: 10,
+			TotalTokens:  54016,
+			InputTokensDetails: &ResponsesInputTokensDetails{
+				CachedTokens: 50688,
+			},
+		},
+	}
+
+	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
+	require.NotNil(t, anth.Usage)
+	assert.Equal(t, 3318, anth.Usage.InputTokens)
+	assert.Equal(t, 50688, anth.Usage.CacheReadInputTokens)
+	assert.Equal(t, 10, anth.Usage.OutputTokens)
+}
+
 func TestResponsesToAnthropic_ToolUse(t *testing.T) {
 	resp := &ResponsesResponse{
 		ID:     "resp_456",
@@ -341,6 +371,36 @@ func TestStreamingTextOnly(t *testing.T) {
 	assert.Equal(t, 10, events[0].Usage.InputTokens)
 	assert.Equal(t, 5, events[0].Usage.OutputTokens)
 	assert.Equal(t, "message_stop", events[1].Type)
+}
+
+func TestStreamingCompleted_CachedTokensExcludedFromInputTokens(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_cache_stream", Model: "gpt-5.2"},
+	}, state)
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.completed",
+		Response: &ResponsesResponse{
+			Status: "completed",
+			Usage: &ResponsesUsage{
+				InputTokens:  54006,
+				OutputTokens: 10,
+				InputTokensDetails: &ResponsesInputTokensDetails{
+					CachedTokens: 50688,
+				},
+			},
+		},
+	}, state)
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "message_delta", events[0].Type)
+	require.NotNil(t, events[0].Usage)
+	assert.Equal(t, 3318, events[0].Usage.InputTokens)
+	assert.Equal(t, 50688, events[0].Usage.CacheReadInputTokens)
+	assert.Equal(t, 10, events[0].Usage.OutputTokens)
 }
 
 func TestStreamingToolCall(t *testing.T) {

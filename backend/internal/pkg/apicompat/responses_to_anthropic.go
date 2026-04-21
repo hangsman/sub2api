@@ -6,6 +6,20 @@ import (
 	"time"
 )
 
+func anthropicInputTokensFromResponsesUsage(usage *ResponsesUsage) int {
+	if usage == nil {
+		return 0
+	}
+	inputTokens := usage.InputTokens
+	if usage.InputTokensDetails != nil {
+		inputTokens -= usage.InputTokensDetails.CachedTokens
+	}
+	if inputTokens < 0 {
+		return 0
+	}
+	return inputTokens
+}
+
 // ---------------------------------------------------------------------------
 // Non-streaming: ResponsesResponse → AnthropicResponse
 // ---------------------------------------------------------------------------
@@ -85,7 +99,7 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 
 	if resp.Usage != nil {
 		out.Usage = AnthropicUsage{
-			InputTokens:  resp.Usage.InputTokens,
+			InputTokens:  anthropicInputTokensFromResponsesUsage(resp.Usage),
 			OutputTokens: resp.Usage.OutputTokens,
 		}
 		if resp.Usage.InputTokensDetails != nil {
@@ -466,7 +480,7 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 	stopReason := "end_turn"
 	if evt.Response != nil {
 		if evt.Response.Usage != nil {
-			state.InputTokens = evt.Response.Usage.InputTokens
+			state.InputTokens = anthropicInputTokensFromResponsesUsage(evt.Response.Usage)
 			state.OutputTokens = evt.Response.Usage.OutputTokens
 			if evt.Response.Usage.InputTokensDetails != nil {
 				state.CacheReadInputTokens = evt.Response.Usage.InputTokensDetails.CachedTokens
